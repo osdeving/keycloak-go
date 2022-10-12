@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 
@@ -33,11 +34,42 @@ func main() {
 		Scopes:       []string{oidc.ScopeOpenID, "profile", "email", "roles"},
 	}
 
+	// o certo é deixar dinâmico
 	state := "123"
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, config.AuthCodeURL(state), http.StatusFound)
 	})
-	
+
+	http.HandleFunc("/auth/callback", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("state") != state {
+			http.Error(w, "State Inválido", http.StatusBadRequest)
+			return
+		}
+
+		token, err := config.Exchange(ctx, r.URL.Query().Get("code"))
+
+		if err != nil {
+			http.Error(w, "Falha ao trocar o token", http.StatusInternalServerError)
+			return
+		}
+
+
+		resp := struct {
+			AccessToken *oauth2.Token
+		}{
+			token,
+		}
+
+		data, err := json.Marshal(resp)
+
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Write(data)
+	})
+
 	log.Fatal(http.ListenAndServe(":8081", nil))
 }
